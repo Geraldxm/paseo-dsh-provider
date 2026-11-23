@@ -1,0 +1,9 @@
+{
+  "id": "paseo-dsh-provider",
+  "name": "DeepSeek Harness provider",
+  "description": "Run DeepSeek Harness agents in Paseo through the harness's own ACP server.",
+  "media": [],
+  "requirements": {
+    "paseo": ">=0.16.2"
+  }
+}

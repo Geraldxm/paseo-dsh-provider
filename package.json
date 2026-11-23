@@ -1,0 +1,35 @@
+{
+  "name": "paseo-dsh-provider",
+  "version": "0.1.0",
+  "files": [
+    "paseo-plugin.json",
+    "OVERVIEW.md",
+    "OVERVIEW.*.md",
+    "index.server.ts",
+    "icon.svg",
+    "server/"
+  ],
+  "scripts": {
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@getpaseo/plugin": "0.16.2",
+    "typescript": "^5.9.3",
+    "zod": "^4.4.3",
+    "@types/node": "^24.19.2"
+  },
+  "description": "Run DeepSeek Harness agents in Paseo through the harness's own ACP server.",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Geraldxm/paseo-dsh-provider.git"
+  },
+  "homepage": "https://github.com/Geraldxm/paseo-dsh-provider",
+  "keywords": [
+    "paseo",
+    "paseo-plugin",
+    "deepseek",
+    "acp",
+    "provider"
+  ]
+}

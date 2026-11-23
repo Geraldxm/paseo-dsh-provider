@@ -1,0 +1,15 @@
+DeepSeek Harness as a Paseo provider. Agents run through the harness's own ACP v1 server, `dsh --profile acp`, so Paseo gets the harness's real tools, sandbox, approval prompts, session persistence and model catalog instead of a text-only wrapper.
+
+The provider spawns the harness for each provider connection it opens and keeps DeepSeek Harness' own profile in `~/.dsh`. The `acp` profile is created from the shipped template on first launch, and it reuses the credentials the desktop app already stored, so there is no key to paste. Sessions, reasoning effort and model choice travel over ACP; `session/request_permission` becomes a normal Paseo approval.
+
+Setup needs the DeepSeek Harness CLI on `PATH` as `dsh`. The provider spawns `dsh --profile acp`; setting `agents.providers.dsh.command` in `~/.paseo/config.json` replaces that whole argument list, and `agents.providers.dsh.env` adds environment for the process. Permissions follow the harness profile: `workspace-write` with approvals, or `danger-full-access` when `DSH_PERMISSION_MODE` asks for it.
+
+What the plugin changes: the harness labels every tool call as ACP `other` and uses its own argument names, which Paseo can only show as a generic row. The plugin relabels writes and edits so they render as diffs, and adds shell, read, search and fetch cards on Paseo 0.17 and later. On Paseo 0.16 only the edit and write rows change.
+
+Limits: the harness exposes no ACP modes, so Paseo shows no mode picker and the permission preset comes from the profile. Model IDs are the harness's opaque `provider/model` pairs, so a model typed by hand has to match a discovered ID exactly or the harness falls back to its default.
+
+Inline images depend on the harness profile: the ACP bridge advertises image prompts only when the profile's default model declares image input, and it re-checks the session's selected model when a prompt arrives. The shipped `acp` profile defaults to a text-only model, so set an image-capable model there before attaching images; a text-only model in the same session rejects them with `model does not declare image input`. Changing the profile needs a plugin reload, because Paseo negotiates provider capabilities when it opens the provider connection.
+
+Sessions import too. Paseo lists a provider's persisted sessions with ACP `session/list`, and the harness reports only an id and a working directory, so the plugin runs the harness behind a small stdio proxy. The proxy adds the title and last-activity time the harness already stores, and it answers `session/load` with the harness's `session/resume`, which is what makes Paseo treat the provider as persistent and let you import a session. An imported session continues with its original history on the harness side; the harness does not replay that history, so the Paseo timeline starts empty and only new turns appear.
+
+Importing a session while the DeepSeek Harness desktop app still holds it open fails with an internal error from the harness, because a session has one live writer. Close that conversation in the app before importing it.

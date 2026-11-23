@@ -111,6 +111,7 @@ function openStream(metadata: SessionMetadata): AcpStream {
       // A late answer to a timed-out inner request must never reach the client.
       return;
     }
+    if (typeof id === "string" || typeof id === "number") explainResumeError(frame, id, rewrittenLoads);
     if ("result" in frame) advertiseLoadSession(frame);
     deliver(frame as AcpStreamMessage);
   };
@@ -218,6 +219,7 @@ function openStream(metadata: SessionMetadata): AcpStream {
     const request = frame as { method?: string; id?: string | number | null; params?: Record<string, unknown> };
     if (typeof request.method === "string" && request.id !== undefined && request.id !== null) {
       if (request.method === "session/load") {
+        rewrittenLoads.add(request.id);
         writeRaw({ ...frame, method: "session/resume" });
         return;
       }
@@ -228,6 +230,9 @@ function openStream(metadata: SessionMetadata): AcpStream {
     }
     writeRaw(frame);
   };
+
+  /** Ids whose `session/load` became `session/resume`, so its errors can be explained. */
+  const rewrittenLoads = new Set<string | number>();
 
   const readable = new ReadableStream<AcpStreamMessage>({
     start(streamController) {
@@ -269,6 +274,25 @@ function enrich(metadata: SessionMetadata, raw: SessionEntry): SessionEntry {
     entry.updatedAt = new Date(facts.lastPromptAt).toISOString();
   }
   return entry;
+}
+
+/**
+ * The harness refuses a resume while the desktop app still writes that session, and
+ * Paseo only shows the generic message. Fold the harness detail into the message so
+ * the import failure says what to do about it.
+ */
+function explainResumeError(
+  frame: AcpStreamMessage,
+  id: string | number,
+  rewrittenLoads: Set<string | number>,
+): void {
+  if (!rewrittenLoads.delete(id)) return;
+  const error = (frame as { error?: { message?: string; data?: { details?: unknown } } }).error;
+  if (!error || typeof error.message !== "string") return;
+  const details = error.data?.details;
+  if (typeof details !== "string" || details === "") return;
+  if (error.message.includes(details)) return;
+  error.message = `${error.message}: ${details}`;
 }
 
 /** Paseo gates importability on `loadSession`, which the harness omits. */

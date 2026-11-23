@@ -22,6 +22,7 @@ import { spawnProcess, terminateProcess } from "@getpaseo/plugin/server";
 import type { AcpConnector, AcpStream, AcpStreamMessage } from "@getpaseo/plugin/server/acp";
 import { StringDecoder } from "node:string_decoder";
 import { dshProviderSettings } from "./paseo-config";
+import { readSessionHistory } from "./history";
 import { SessionMetadata } from "./session-metadata";
 
 const INNER_ID_PREFIX = "dsh-connector-";
@@ -99,6 +100,17 @@ function openStream(metadata: SessionMetadata): AcpStream {
 
   const onHarnessFrame = (frame: AcpStreamMessage & { id?: string | number | null }) => {
     const id = frame.id;
+    const load = typeof id === "string" || typeof id === "number" ? pendingLoads.get(id) : undefined;
+    if (load !== undefined) {
+      pendingLoads.delete(id as string | number);
+      if ("error" in frame && (frame as { error?: unknown }).error) {
+        explainResumeError(frame);
+        deliver(frame as AcpStreamMessage);
+        return;
+      }
+      void replayHistoryThenDeliver(load.nativeId, frame as AcpStreamMessage);
+      return;
+    }
     if (typeof id === "string" && pendingInner.has(id)) {
       const entry = pendingInner.get(id)!;
       pendingInner.delete(id);
@@ -111,7 +123,6 @@ function openStream(metadata: SessionMetadata): AcpStream {
       // A late answer to a timed-out inner request must never reach the client.
       return;
     }
-    if (typeof id === "string" || typeof id === "number") explainResumeError(frame, id, rewrittenLoads);
     if ("result" in frame) advertiseLoadSession(frame);
     deliver(frame as AcpStreamMessage);
   };
@@ -219,7 +230,8 @@ function openStream(metadata: SessionMetadata): AcpStream {
     const request = frame as { method?: string; id?: string | number | null; params?: Record<string, unknown> };
     if (typeof request.method === "string" && request.id !== undefined && request.id !== null) {
       if (request.method === "session/load") {
-        rewrittenLoads.add(request.id);
+        const nativeId = request.params?.sessionId;
+        if (typeof nativeId === "string") pendingLoads.set(request.id, { nativeId });
         writeRaw({ ...frame, method: "session/resume" });
         return;
       }
@@ -231,8 +243,24 @@ function openStream(metadata: SessionMetadata): AcpStream {
     writeRaw(frame);
   };
 
-  /** Ids whose `session/load` became `session/resume`, so its errors can be explained. */
-  const rewrittenLoads = new Set<string | number>();
+  /** `session/load` requests in flight, by client id, with the session they load. */
+  const pendingLoads = new Map<string | number, { nativeId: string }>();
+
+  /**
+   * Replay the persisted conversation before the load response, which is when an ACP
+   * agent normally sends history. A session with no readable log still opens.
+   */
+  const replayHistoryThenDeliver = async (nativeId: string, response: AcpStreamMessage) => {
+    try {
+      const updates = readSessionHistory(nativeId);
+      for (const update of updates) {
+        deliver({ jsonrpc: "2.0", method: "session/update", params: { sessionId: nativeId, update } } as AcpStreamMessage);
+      }
+    } catch {
+      // History is best effort; a broken log must not fail the import.
+    }
+    deliver(response);
+  };
 
   const readable = new ReadableStream<AcpStreamMessage>({
     start(streamController) {
@@ -281,12 +309,7 @@ function enrich(metadata: SessionMetadata, raw: SessionEntry): SessionEntry {
  * Paseo only shows the generic message. Fold the harness detail into the message so
  * the import failure says what to do about it.
  */
-function explainResumeError(
-  frame: AcpStreamMessage,
-  id: string | number,
-  rewrittenLoads: Set<string | number>,
-): void {
-  if (!rewrittenLoads.delete(id)) return;
+function explainResumeError(frame: AcpStreamMessage): void {
   const error = (frame as { error?: { message?: string; data?: { details?: unknown } } }).error;
   if (!error || typeof error.message !== "string") return;
   const details = error.data?.details;

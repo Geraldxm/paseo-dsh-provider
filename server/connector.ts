@@ -21,7 +21,7 @@
 import { spawnProcess, terminateProcess } from "@getpaseo/plugin/server";
 import type { AcpConnector, AcpStream, AcpStreamMessage } from "@getpaseo/plugin/server/acp";
 import { StringDecoder } from "node:string_decoder";
-import { dshProviderSettings } from "./paseo-config";
+import { dshLaunch } from "./desktop-providers";
 import { readSessionHistory } from "./history";
 import { SessionMetadata } from "./session-metadata";
 
@@ -46,9 +46,9 @@ export function createDshConnector(metadata = new SessionMetadata()): AcpConnect
 }
 
 function openStream(metadata: SessionMetadata): AcpStream {
-  const settings = dshProviderSettings();
-  const child = spawnProcess(settings.command[0], settings.command.slice(1), {
-    env: { ...process.env, ...settings.env },
+  const launch = dshLaunch();
+  const child = spawnProcess(launch.command[0], launch.command.slice(1), {
+    env: launch.env,
     stdio: "pipe",
   });
 

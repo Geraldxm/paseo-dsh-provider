@@ -13,9 +13,16 @@ import { join } from "node:path";
 export interface DshProviderSettings {
   command: readonly [string, ...string[]];
   env: Record<string, string>;
+  /**
+   * Profile whose custom model providers the harness inherits, from
+   * `agents.providers.dsh.inheritProvidersFrom`. Defaults to `desktop`; `false` or an
+   * empty string turns inheritance off.
+   */
+  inheritProvidersFrom: string | null;
 }
 
 const DEFAULT_COMMAND = ["dsh", "--profile", "acp"] as const;
+const DEFAULT_INHERIT_FROM = "desktop";
 
 function paseoConfigPath(): string {
   return join(process.env.PASEO_HOME ?? join(homedir(), ".paseo"), "config.json");
@@ -30,11 +37,15 @@ export function dshProviderSettings(): DshProviderSettings {
   try {
     mtimeMs = statSync(path).mtimeMs;
   } catch {
-    return { command: DEFAULT_COMMAND, env: {} };
+    return { command: DEFAULT_COMMAND, env: {}, inheritProvidersFrom: DEFAULT_INHERIT_FROM };
   }
   if (cached?.mtimeMs === mtimeMs) return cached.settings;
 
-  const settings: DshProviderSettings = { command: DEFAULT_COMMAND, env: {} };
+  const settings: DshProviderSettings = {
+    command: DEFAULT_COMMAND,
+    env: {},
+    inheritProvidersFrom: DEFAULT_INHERIT_FROM,
+  };
   try {
     const entry = JSON.parse(readFileSync(path, "utf8"))?.agents?.providers?.dsh ?? {};
     if (Array.isArray(entry.command)) {
@@ -46,6 +57,9 @@ export function dshProviderSettings(): DshProviderSettings {
         if (typeof value === "string") settings.env[key] = value;
       }
     }
+    const inherit = entry.inheritProvidersFrom;
+    if (inherit === false || inherit === "") settings.inheritProvidersFrom = null;
+    else if (typeof inherit === "string") settings.inheritProvidersFrom = inherit;
   } catch {
     // A malformed config keeps the defaults; the daemon reports the real error.
   }
